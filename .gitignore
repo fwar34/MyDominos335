@@ -1,0 +1,8 @@
+# 系统 / 编辑器产生的无用文件
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 备份与日志
+*.bak
+*.log
