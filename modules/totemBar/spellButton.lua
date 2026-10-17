@@ -2,6 +2,17 @@
 spellButton.lua
 A dominos spell button
 ]] --
+--[[
+	中文说明：本文件为图腾条的技能按钮 spellButton.lua
+	职责：定义 Dominos.SpellButton 类（继承 Dominos.BindableButton），供图腾条上的法术按钮使用；
+	     通过 active/unused 两个表组成对象池，复用而非反复创建按钮。
+	关键依赖：Dominos（CreateClass、BindableButton、Masque 皮肤、ActionButton 体系）、
+	     Blizzard 的 SecureActionButtonTemplate/ActionButtonTemplate、LibKeyBound-1.0（悬停时绑定快捷键）、
+	     IsSpellKnown/GetSpellCooldown/IsUsableSpell/IsSpellInRange 等旧 API（客户端 Interface 30300）。
+	被谁使用：由 modules/totemBar/totemBar.xml 先于 totemBar.lua 加载，供 totemBar.lua 的 CreateSpellButton 调用。
+	注意：插件对外名已改为 MyDominos335，但内部标识仍为 Dominos——全局类 Dominos.SpellButton、
+	     动态框架全局名 DominosSpellButton%d 均未随插件改名。
+--]]
 --dont create the spell button object class if it already exists
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
@@ -11,6 +22,7 @@ local SpellButton = Dominos:CreateClass("CheckButton", Dominos.BindableButton)
 Dominos.SpellButton = SpellButton
 
 --lists of active and unused spell buttons
+-- 对象池：active 保存正在使用的按钮，unused 保存空闲可复用的按钮
 SpellButton.active = {}
 SpellButton.unused = {}
 
@@ -54,6 +66,7 @@ do
 	end
 end
 
+-- 从空闲池取出一个可复用按钮（无则返回 nil，由调用方再创建）
 function SpellButton:Restore()
 	local b = next(self.unused)
 	if b then
@@ -72,6 +85,7 @@ function SpellButton:Skin()
 end
 
 --[[ Destructor ]]
+-- 回收按钮：注销事件、脱离父级并隐藏后放回空闲池
 function SpellButton:Free()
 	self.active[self] = nil
 
@@ -125,6 +139,7 @@ function SpellButton:OnUpdate(elapsed)
 	end
 end
 
+-- 事件分发：把事件转发给同名方法处理（如 SPELL_UPDATE_COOLDOWN）
 function SpellButton:OnEvent(event, ...)
 	local action = self[event]
 	if action then
@@ -223,6 +238,7 @@ function SpellButton:UpdateColor()
 	end
 end
 
+-- 事件更新：按可见性与是否存在法术，注册/注销相应事件与 OnUpdate
 function SpellButton:UpdateEvents()
 	self:UnregisterAllEvents()
 

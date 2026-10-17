@@ -1,3 +1,20 @@
+--[[
+	MyDominos335（内部标识仍为 Dominos）—— 宠物动作条模块 petBar.lua
+
+	负责宠物动作条：直接复用暴雪原生按钮 PetActionButton1..NUM_PET_ACTION_SLOTS，
+	不新建按钮。条本身继承 core 的 Dominos.Frame，按钮继承 Dominos.BindableButton。
+
+	关键依赖：
+		- Dominos:Masque("Pet Bar", ...)：皮肤；不可用时回退 Dominos 自带外观（PetButton:Skin）
+		- LibKeyBound-1.0：悬停高亮并显示按键绑定
+		- hooksecurefunc 挂接暴雪的 PetActionBar_UpdateCooldowns / PetActionButton_SetHotkeys
+
+	注意事项：
+		- 内部标识仍为 Dominos：语言键仍是 "Dominos"。
+		- 面向 3.3.5a（Interface 30300）旧 API，使用 NUM_PET_ACTION_SLOTS、PetHasActionBar、
+		  GetPetActionInfo 等，无现代 C_ 系列接口。
+--]]
+
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -8,6 +25,7 @@ local KeyBound = LibStub("LibKeyBound-1.0")
 local unused, hooked
 
 --[[ Pet Button ]]
+-- 宠物动作条按钮类：继承 Dominos.BindableButton，直接复用暴雪原生 PetActionButtonXX。
 local PetButton = Dominos:CreateClass("CheckButton", Dominos.BindableButton)
 
 local function Dominos_RestoreSaturation(self, icon)
@@ -16,6 +34,8 @@ local function Dominos_RestoreSaturation(self, icon)
 	end
 end
 
+-- 挂钩暴雪冷却刷新：仅当冷却时长 >= 2.01 秒时才做去饱和（变灰）转圈效果，避免短 GCD 误触发；
+-- 通过 Dominos:Delay 在冷却结束附近恢复图标饱和度。
 local function Dominos_PetActionBar_UpdateCooldowns(self)
 	for i = 1, NUM_PET_ACTION_SLOTS, 1 do
 		local icon = _G["PetActionButton" .. i .. "Icon"]
@@ -35,6 +55,7 @@ local function Dominos_PetActionBar_UpdateCooldowns(self)
 	end
 end
 
+-- 取得按钮：复用空闲池或新建，刷新热键；首次调用时挂接暴雪的冷却更新函数（hooked 保证只挂一次）。
 function PetButton:New(id)
 	local b = self:Restore(id) or self:Create(id)
 	b:UpdateHotkey()
@@ -47,6 +68,7 @@ function PetButton:New(id)
 	return b
 end
 
+-- 绑定暴雪原生 PetActionButtonXX，并标记 buttonType（暴雪默认显示为 BONUSACTIONBUTTON 键位）。
 function PetButton:Create(id)
 	local b = self:Bind(_G["PetActionButton" .. id])
 	b.buttonType = "BONUSACTIONBUTTON"
@@ -98,6 +120,7 @@ end
 hooksecurefunc("PetActionButton_SetHotkeys", PetButton.UpdateHotkey)
 
 --[[ Pet Bar ]]
+-- 宠物条类：继承 core 的 Dominos.Frame；按钮数固定为 NUM_PET_ACTION_SLOTS。
 local PetBar = Dominos:CreateClass("Frame", Dominos.Frame)
 Dominos.PetBar = PetBar
 
@@ -109,6 +132,7 @@ function PetBar:New()
 	return f
 end
 
+-- 宠物条显隐条件：存在可控宠物、且不在载具（bonusbar:5）时显示，否则隐藏
 function PetBar:GetShowStates()
 	return "[target=pet,exists,nobonusbar:5]show;hide"
 end
@@ -135,6 +159,7 @@ function PetBar:RemoveButton(i)
 end
 
 --[[ keybound  support ]]
+-- 进入按键绑定模式：强制显示宠物条并显示所有按钮，便于玩家查看/设置绑定
 function PetBar:KEYBOUND_ENABLED()
 	self.header:SetAttribute("state-visibility", "display")
 
@@ -143,6 +168,7 @@ function PetBar:KEYBOUND_ENABLED()
 	end
 end
 
+-- 退出按键绑定模式：恢复默认显隐状态，并按“是否有宠物 / 该槽位是否有宠物动作”逐钮显示或隐藏
 function PetBar:KEYBOUND_DISABLED()
 	self:UpdateShowStates()
 

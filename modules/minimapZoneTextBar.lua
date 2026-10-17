@@ -1,6 +1,21 @@
+--[[--------------------------------------------------------------------
+minimapZoneTextBar.lua —— 小地图区域文字模块（模块注册名："Zone-Text"）
+
+职责：
+	把暴雪的小地图区域名称按钮 MinimapZoneTextButton 改挂到自建的全局框架
+	"ZoneText" 下，使其成为可自由摆放的独立元素（区域名/坐标文字随之移动）。
+
+模块注册名：Dominos:NewModule("Zone-Text")
+	说明：插件对外名为 MyDominos335，但内部标识仍沿用经典 Dominos；
+	本模块与 minimapBar.lua 同属小地图体系，共用 Dominos:UseMinimap() 开关。
+
+依赖与前置条件（OnInitialize）：
+	需要 Dominos:UseMinimap() 为真，否则 self:Disable() 停用。
+]]--
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
+-- 模块注册名为 "Zone-Text"；zoneText 为承载区域文字的全局框架 "ZoneText"。
 local mod = Dominos:NewModule("Zone-Text")
 local class = Dominos:CreateClass("Frame", Dominos.Frame)
 local zoneText = CreateFrame("Frame", "ZoneText", UIParent)
@@ -16,6 +31,8 @@ do
         end
     end
 
+	-- 初始化：仅在 Dominos:UseMinimap() 为真时接管，把区域名按钮改挂到 zoneText 下，
+	-- 并收集 zoneText 的子控件（带 GetName 的）作为可布局按钮；否则 Disable() 停用。
 	function mod:OnInitialize()
 		if Dominos:UseMinimap() then
 			MinimapZoneTextButton:SetParent(zoneText)
@@ -26,6 +43,7 @@ do
 	end
 end
 
+-- 加载：创建本模块的可布局框架实例。
 function mod:Load()
     self.frame = class:New()
     self.frame:SetFrameStrata("LOW")
@@ -37,6 +55,7 @@ function mod:Unload()
     end
 end
 
+-- 创建本模块的可布局框架实例（框架 id 为 "Zone-Text"）。
 function class:New()
     local f = self.super.New(self, "Zone-Text")
     if not f.value then
@@ -116,6 +135,7 @@ local function AddShowState(self)
     return p
 end
 
+-- 构建配置菜单：布局面板 + 显示状态设置。
 function class:CreateMenu()
     local menu = self.menu or Dominos:NewMenu(self.id)
     AddLayoutPanel(menu)

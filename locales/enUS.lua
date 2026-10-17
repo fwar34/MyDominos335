@@ -1,3 +1,9 @@
+--[[
+	中文说明：AceLocale 语言包，语言代码为 enUS（美式英语）。
+	AceLocale 键为 "Dominos"（内部标识，未随插件对外名 MyDominos335 改名）。
+	本文件是默认语言包，必须最先由 locales/_load.xml 加载（NewLocale 第三参为 true，作为缺失翻译的回退）。
+	仅提供 L.xxx 翻译文本，不含逻辑。
+--]]
 local L = LibStub("AceLocale-3.0"):NewLocale("Dominos", "enUS", true)
 if not L then return end
 --system messages

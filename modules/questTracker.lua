@@ -1,8 +1,26 @@
+--[[--------------------------------------------------------------------
+questTracker.lua —— 任务追踪模块（模块注册名："QuestLog"）
+
+职责：
+	接管暴雪任务追踪器 WatchFrame，把它塞进自建的滚动框架中，
+	由 Dominos 控制追踪框的位置、宽高与内边距，并重写折叠/展开按钮的事件与提示。
+
+模块注册名：Dominos:NewModule("QuestLog")
+	说明：插件对外名为 MyDominos335，但内部标识仍沿用经典 Dominos；
+	本模块动态创建的全局名仍为 DominosQuestFrame / DominosQuestFrameScrollBar。
+
+依赖与前置条件（Load）：
+	需要 Dominos:UseQuest() 为真，否则 self:Unload() 直接返回、不创建框架。
+
+注意事项：
+	面向 3.3.5a（Interface 30300）旧 API，直接复用暴雪 WatchFrame_Update 等全局函数。
+]]--
 assert(Dominos, "Dominos not found!")
 local mod = Dominos:NewModule("QuestLog")
 local class = Dominos:CreateClass("Frame", Dominos.Frame)
 local LD, L = LibStub("AceLocale-3.0"):GetLocale("Dominos")
 
+-- 加载：仅在 Dominos:UseQuest() 为真时创建框架；否则 Unload() 后直接返回。
 function mod:Load()
 	if not Dominos:UseQuest() then
 		self:Unload()
@@ -26,6 +44,7 @@ function class:New()
 	return f
 end
 
+-- 为追踪框创建标题栏（一条纹理 + 居中标题文字），标题随后由暴雪 WatchFrameHeader 填充。
 local function TitleBoxMaker(parent)
 	local header = parent:CreateTexture(parent:GetName() .. "TitleBox", "ARTWORK")
 	header:SetHeight(32)
@@ -40,6 +59,9 @@ function class:GetDefaults()
 	return {scale = 1, point = "RIGHT", x = 0, y = 0, width = 100, height = 300, padding = 0}
 end
 
+-- 构建追踪器骨架：自建容器 "DominosQuestFrame"，
+-- 内含标题栏、滚动区域与垂直滑块，并注册 PLAYER_ENTERING_WORLD / QUEST_LOG_UPDATE，
+-- 每次事件都通过 SetUpContainer 重新把暴雪 WatchFrame 挂接进来。
 function class:OnLoad()
 	self.WFC = CreateFrame("Frame", "DominosQuestFrame", self)
 	self.WFC.title = TitleBoxMaker(self.WFC)
@@ -50,6 +72,7 @@ function class:OnLoad()
 	self.WFC.scrollframe.scroll = CreateFrame("Slider", "DominosQuestFrameScrollBar", self.WFC.scrollframe, "OptionsSliderTemplate")
 	self.WFC.scrollframe.scroll:SetPoint("BOTTOMLEFT", self.WFC.scrollframe, "BOTTOMRIGHT", 2, 6)
 	self.WFC.scrollframe.scroll:SetPoint("TOPLEFT", self.WFC.scrollframe, "TOPRIGHT", 2, 3)
+	-- 滚动范围按框架高度换算（暴雪行高比例 75/131）
 	self.WFC.scrollframe.scroll:SetMinMaxValues(1, (75 / 131) * self.sets.height)
 	self.WFC.scrollframe.scroll:SetBackdrop({
 		bgFile = "Interface\\DialogFrame\\DialogFrame-Left",
@@ -74,6 +97,9 @@ function class:OnLoad()
 end
 
 --[[Layout]]--
+-- 重新计算容器尺寸与内边距(padding)：按宽/高 + padding 设定框架大小，
+-- 同步暴雪 WATCHFRAME_EXPANDEDWIDTH / WATCHFRAME_MAXLINEWIDTH / RANDOM_WIDTH... 等全局量，
+-- 重设 WatchFrame 宽度后触发一次 WatchFrame_Update()。
 function class:Layout()
 	self.WFC:SetParent(self)
 	local pad = self.sets.padding - 4
@@ -119,6 +145,9 @@ do
 		end
 	end
 
+	-- 根据 sets.disablescroll 决定鼠标滚轮如何作用于追踪列表：
+	--   启用滚动条时把滚轮绑到滚动框与滑块上；
+	--   禁用滚动条时收起滑块并把滚轮直接绑到框架上（复用 scrollbar_OnScroll）。
 	function class:EnableScroll(f)
 		if not f.sets.disablescroll then
 			f.WFC.scrollframe.scroll:Show()
@@ -146,6 +175,9 @@ function class:ToggleScroll(enable)
 	class:EnableScroll(self)
 end
 
+-- 把暴雪 WatchFrame 重新挂接到自建滚动子框架上：
+-- 重设其父级/锚点/高度，隐藏暴雪原生的显示控制，
+-- 并改写折叠展开按钮(WatchFrameCollapseExpandButton)与标题的行为和事件。
 function class:SetUpContainer(f)
 	f.WFC.scrollframe.scroll:SetValue(1)
 	WatchFrame_Update()
@@ -263,6 +295,7 @@ local function AddLayoutPanel(menu)
 end
 
 --[[ Menu Code ]]
+-- 构建配置菜单：布局面板（宽/高/内边距/透明度/淡化/缩放 + 禁用滚动条复选框）。
 function class:CreateMenu()
 	local menu = self.menu or Dominos:NewMenu(self.id)
 	L = L or LibStub("AceLocale-3.0"):GetLocale("Dominos-Config")
@@ -272,6 +305,8 @@ end
 
 --[[ Override of the Default Tracker Width ]]
 --[[ Need to make this a secure hook! HOW???? ]]
+-- 覆写 WatchFrame.SetWidth：保留原函数再调用，使暴雪设置宽度后仍受本模块 Layout() 影响
+-- （此处并非安全钩子，仅为过渡处理）。
 local oldSetWidth = WatchFrame.SetWidth
 WatchFrame.SetWidth = function(self, width)
 	oldSetWidth(self, width)

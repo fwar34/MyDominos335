@@ -1,3 +1,9 @@
+# MyDominos335 主插件清单（TOC）
+# 适配客户端：《魔兽世界》巫妖王之怒 3.3.5a（Interface 30300）。
+# 来源：基于 Dominos 3.3.5 移植版（Kader's Edition）重命名为 MyDominos335。
+# 说明：仅对外标识改为 MyDominos335；内部标识仍为 Dominos——存档变量仍为
+#       DominosDB / DominosVersion，全局表仍为 Dominos，斜杠命令仍为 /dominos 与 /dom。
+# 加载顺序：库 -> 本地化 -> core -> modules，顺序不可颠倒（core 须先于 modules）。
 ## Interface: 30300
 ## Title: MyDominos335
 ## Title-zhCN: MyDominos335

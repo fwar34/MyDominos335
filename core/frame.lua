@@ -30,6 +30,30 @@ frame.lua
 	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 	POSSIBILITY OF SUCH DAMAGE.
 --]]
+--[[
+	文件用途 / 架构角色：
+		定义通用的 Dominos 框架容器对象 Frame，是动作条各分栏的基类。
+		提供对象池（Restore / Free）、按钮布局（Layout）、透明度合成、
+		贴靠粘连（Stick / StickToEdge / SetAnchor）、显隐状态以及
+		统一的操作入口 ForAll / ForFrame。各具体分栏（ActionBar、PetBar 等）
+		在 modules 中继承此 Frame 并实现各自逻辑。
+
+	内部标识说明：
+		对外改名为 MyDominos335，但本文件仍向全局表 Dominos 挂载 Dominos.Frame，
+		存档、全局框架名等内部标识仍为 Dominos。
+
+	关键依赖：
+		- core：Dominos.lua（提供 Dominos:CreateClass 与配置读写）、
+		  fadeManager.lua（Dominos.FadeManager）、drag.lua（Dominos.DragFrame）。
+		- 库：AceLocale-3.0（语言键 "Dominos"）、可选 FlyPaper（贴靠算法）、
+		  LibKeyBound、AceLocale-3.0（"Dominos-Config"，用于弹出菜单）。
+		- 依赖的全局状态驱动 API：SecureHandlerStateTemplate / RegisterStateDriver /
+		  SecureCmdOptionParse（3.3.5 安全框架，无现代替代 API）。
+
+	被使用：
+		Dominos:Load / Unload 通过 Frame:ForAll / ForFrame 批量操作所有分栏；
+		modules/* 继承本 Frame 类型。
+]]
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 local FlyPaper = _G.FlyPaper
@@ -42,6 +66,7 @@ local active = {}
 local unused = {}
 
 --constructor
+-- 构造：优先复用对象池中的旧框架，否则新建，再套用配置。
 function Frame:New(id, tooltipText)
 	id = tonumber(id) or id
 	local f = self:Restore(id) or self:Create(id)
@@ -53,6 +78,9 @@ function Frame:New(id, tooltipText)
 	return f
 end
 
+-- 真正创建一个新框架：可拖动、可贴边，并创建安全头 header 与拖动手柄 drag。
+-- header 承担“状态驱动”显隐：其 _onstate-display 片段在显示状态变化时，
+-- 解析新状态——'hide' 则隐藏并清空 frame-alpha；数字则换算成 alpha 后显示。
 function Frame:Create(id)
 	local f = self:Bind(CreateFrame("Frame", nil, UIParent))
 	f:SetClampedToScreen(true)
@@ -91,6 +119,8 @@ function Frame:Restore(id)
 end
 
 --destructor
+-- 析构：从活动表移除、注销状态驱动、解除淡出与按钮，
+-- 复位位置与放置状态，回收进对象池 unused 供 Restore 复用，并广播 DOMINOS_FREE。
 function Frame:Free()
 	active[self.id] = nil
 
@@ -243,6 +273,10 @@ function Frame:GetTopToBottom()
 	return not self.sets.isBottomToTop
 end
 
+-- 布局算法：按列数（NumColumns，默认等于按钮数）把按钮排成网格。
+-- 每格宽高为按钮尺寸加间距；队伍方向由 LeftToRight / TopToBottom 决定
+-- （从右到左、从下到上则对行列坐标取镜像）。最后按网格整体算出框架尺寸，
+-- 并保证不小于 8（无按钮时用 30x30 占位）。
 function Frame:Layout()
 	local width, height
 	if #self.buttons > 0 then
@@ -362,6 +396,11 @@ function Frame:UpdateAlpha()
 	Dominos.callbacks:Fire("DOMINOS_SETALPHA", self)
 end
 
+-- 透明度合成，返回值决定框架应有的透明度，优先级从高到低：
+-- 1) 若开启“联动透明度”且本框架贴靠了别的框架，直接沿用被贴靠框架的期望值；
+-- 2) 安全状态框架设置的 frame-alpha（由显示状态驱动，如不同姿态/战斗中）；
+-- 3) 基础透明度；若已淡出倍数 >=1 或鼠标正悬停（IsFocus）则不加淡出，
+--    否则把基础透明度乘上淡出倍数。
 function Frame:GetExpectedAlpha()
 	if Dominos:IsLinkedOpacityEnabled() then
 		local anchor = (self:GetAnchor())
@@ -477,6 +516,9 @@ function Frame:GetShowStates()
 	return states
 end
 
+-- 应用显示条件：有 showstates 时给安全头 header 注册 "display" 状态驱动
+-- 并立即用 SecureCmdOptionParse 求值一次；无则注销驱动并直接显示。
+-- 这样 [combat] / [mod:shift] 等条件由安全框架在战斗中也能正确控制显隐。
 function Frame:UpdateShowStates()
 	local showstates = self:GetShowStates()
 	if showstates then
@@ -500,6 +542,10 @@ function Frame:Unlock()
 end
 
 --[[ Sticky Bars ]]--
+-- 贴靠吸附相关：stickyTolerance（像素）是判定“足够近则吸附”的容差。
+-- StickToEdge 在拖动结束后把框架吸附到父级屏幕边缘（含自动居中）；
+-- Stick 先解绑、再尝试用 FlyPaper 吸附到其他框架，否则退回吸边；
+-- SetAnchor / ClearAnchor 维护被贴靠关系（anchor.docked 列表）并存档锚点串。
 Frame.stickyTolerance = 16
 
 function Frame:StickToEdge()
@@ -771,6 +817,9 @@ function Frame:ForAll(method, ...)
 	end
 end
 
+-- 统一操作入口：对指定 id 的框架执行 method。
+-- 特殊 id："all" → 对所有框架调用 ForAll；"起始-结束"（如 "1-6"）→ 区间内逐个执行，
+-- 区间会先保证起点不大于终点；其他值 → 视为单个框架 id。
 --takes a fID, and performs the specified action on that f
 --this adds two special IDs, 'all' for all fs and number-number for a range of IDs
 function Frame:ForFrame(id, method, ...)

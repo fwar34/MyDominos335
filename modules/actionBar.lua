@@ -1,3 +1,30 @@
+--[[
+	MyDominos335（内部标识仍为 Dominos）—— 动作条模块 actionBar.lua
+
+	本模块负责“主动作条”的创建与管理：由若干条编号动作条组成（条数由
+	Dominos:NumBars() 决定），是本插件最核心的模块。这些条均继承自 core 的
+	Dominos.Frame；按钮则继承 Dominos.BindableButton，并尽量复用暴雪原生按钮，
+	仅在不足时才动态创建。
+
+	关键依赖：
+		- Dominos.BindableButton：按钮基类，提供 Bind 等绑定能力
+		- Dominos:Masque("Action Bar", ...)：皮肤（Masque/ButtonFacade）；不可用时
+		  回退到 Dominos 自带外观（见 ActionButton:Skin）
+		- LibKeyBound-1.0：鼠标悬停按钮时高亮并显示按键绑定
+
+	按钮来源（复用暴雪原生全局框架）：
+		ActionButton1..12、BonusActionButton1..12、MultiBarRightButton1..12、
+		MultiBarLeftButton1..12、MultiBarBottomRightButton1..12、
+		MultiBarBottomLeftButton1..12；超过 72 个则新建 DominosActionButtonXX。
+
+	注意事项：
+		- 内部标识仍为 Dominos：全局表仍是 Dominos，存档仍是 DominosDB，
+		  语言键仍是 "Dominos" / "Dominos-Config"。
+		- 面向 3.3.5a（Interface 30300）旧 API，无 C_Timer / C_AddOns 等新接口；
+		  延时统一走 Dominos:Delay（基于 OnUpdate）。
+		- 分页依赖安全状态驱动（SecureStateDriver）与子状态回调 _childupdate-action。
+--]]
+
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -11,17 +38,24 @@ local NUM_POSSESS_BAR_BUTTONS = 12
 local KeyBound = LibStub("LibKeyBound-1.0")
 
 --[[ Action Button ]]--
+-- 动作条按钮类：继承 core 的 Dominos.BindableButton（可绑定按钮），底层框架为
+-- CheckButton。unused/active 分别缓存“空闲可复用”与“使用中”的按钮。
 local ActionButton = Dominos:CreateClass("CheckButton", Dominos.BindableButton)
 Dominos.ActionButton = ActionButton
 ActionButton.unused = {}
 ActionButton.active = {}
 
 --constructor
+-- 取得按钮：优先从空闲池 Restore，否则新建 Create，然后写入基础动作 ID 与安全子状态回调。
 function ActionButton:New(id)
 	local b = self:Restore(id) or self:Create(id)
 	if b then
 		b:SetAttribute("showgrid", 0)
+		-- action--base：该按钮的基础动作 ID（等于其全局编号 id），不随分页变化
 		b:SetAttribute("action--base", id)
+		-- _childupdate-action：安全“子状态”回调。父框架分页变化时会以 message 携带新状态名
+		-- 触发；据此从 action--<state> 取页码对应动作，取不到则回退 action--base，
+		-- 最终写入 action 属性供动作按钮使用。
 		b:SetAttribute("_childupdate-action", [[
 			local id = message and self:GetAttribute('action--' .. message) or self:GetAttribute('action--base')
 			self:SetAttribute('action', id)
@@ -43,17 +77,20 @@ function ActionButton:New(id)
 	end
 end
 
+-- 依 id 号段选择按钮来源：1..72 复用暴雪原生按钮，超出则以 ActionBarButtonTemplate 新建。
 local function Create(id)
 	if id <= 12 then
 		local b = _G["ActionButton" .. id]
 		b.buttonType = "ACTIONBUTTON"
 		return b
+	-- 13..24：复用暴雪“奖励动作条”按钮 BonusActionButton1..12
 	elseif id <= 24 then
 		local b = _G["BonusActionButton" .. (id - 12)]
 		b:UnregisterEvent("UPDATE_BONUS_ACTIONBAR")
 		b.isBonus = nil
 		b.buttonType = nil --this is done because blizzard displays action bar 1 bindings on the bonus bar, which is incorrect in the case of Dominos
 		return b
+	-- 25..72：复用暴雪右侧/左侧/右下/左下动作条按钮
 	elseif id <= 36 then
 		return _G["MultiBarRightButton" .. (id - 24)]
 	elseif id <= 48 then
@@ -63,6 +100,7 @@ local function Create(id)
 	elseif id <= 72 then
 		return _G["MultiBarBottomLeftButton" .. (id - 60)]
 	end
+	-- 超过 72：动态创建 Dominos 自有按钮
 	return CreateFrame("CheckButton", "DominosActionButton" .. (id - 72), nil, "ActionBarButtonTemplate")
 end
 
@@ -71,6 +109,8 @@ function ActionButton:Create(id)
 	if b then
 		self:Bind(b)
 
+		-- 用意：保留按钮原始 ID 供旧按键绑定系统使用；但不能让 SetID 保持 >0，
+		-- 否则暴雪代码会依据按钮 ID 自行接管分页，导致 Dominos 分页失效，故 SetID(0)。
 		--this is used to preserve the button's old id
 		--we cannot simply keep a button's id at > 0 or blizzard code will take control of paging
 		--but we need the button's id for the old bindings system
@@ -87,6 +127,7 @@ function ActionButton:Create(id)
 	return b
 end
 
+-- 从空闲池取出按钮并重新启用：重新注册事件、刷新动作、显示
 function ActionButton:Restore(id)
 	local b = self.unused[id]
 	if b then
@@ -286,6 +327,8 @@ ActionBar.mainbarOffsets = {
 	end
 }
 
+-- 分页条件表：按求值顺序排列。序号（state）与 UpdateStateDriver/UpdateAction 中生成的
+-- “action--S<序号>” 状态属性一一对应；安全状态驱动会按顺序命中首个成立的条件来切页。
 --this is the set of conditions used for paging, in order of evaluation
 ActionBar.conditions = {
 	"[mod:SELFCAST]",
@@ -402,6 +445,9 @@ function ActionBar:GetPage(condition)
 	return self.pages[condition]
 end
 
+-- 重新构建安全状态驱动：遍历 conditions，为每个已设置页码的条件拼出
+-- “<条件>S<序号>;” 片段，末尾附加 “0” 作为默认页；possess（载具页）为特例，
+-- 直接拼 “<条件>possess;”（对应 UpdateAction 中写入的 action--possess）。
 --note to self:
 --if you leave a ; on the end of a statebutton string, it causes evaluation issues,
 -- especially if you're doing right click selfcast on the base state
@@ -432,6 +478,9 @@ local function ToValidID(id)
 	return (id - 1) % MAX_BUTTONS + 1
 end
 
+-- 为单个按钮推导全部状态下的 actionID：
+-- id = action--base + (本条第几页 + 页码 - 1) * 每条长度，再取模 MAX_BUTTONS 归一到 1..MAX_BUTTONS，
+-- 写入对应状态属性 action--S<state>；无页码的条件写 nil。
 --updates the actionID of a given button for all states
 function ActionBar:UpdateAction(i)
 	local b = self.buttons[i]
@@ -451,6 +500,9 @@ function ActionBar:UpdateAction(i)
 	end
 end
 
+-- 为所有按钮推导全部状态下的 actionID（与 UpdateAction 同理，但按按钮序号 i 批量处理），
+-- 并统一维护 possess（载具）页：仅前 NUM_POSSESS_BAR_BUTTONS 个按钮映射到 MAX_BUTTONS+i，
+-- 其余按钮的 action--possess 置空。
 --updates the actionID of all buttons for all states
 function ActionBar:UpdateActions()
 	local maxSize = self:MaxLength()
@@ -479,6 +531,8 @@ function ActionBar:UpdateActions()
 	end
 end
 
+-- 注册安全状态回调：当 page 状态变化时，让 header 通知所有子按钮刷新 action。
+-- 与按钮上的 _childupdate-action 配合，把 ChildUpdate 的 message 转发为各按钮的 action 更新。
 function ActionBar:LoadStateController()
 	self.header:SetAttribute("_onstate-page", [[ control:ChildUpdate('action', newstate) ]])
 end
@@ -492,6 +546,7 @@ function ActionBar:RefreshActions()
 	end
 end
 
+-- 是否为本插件的 possess（载具/控制）条；是则返回 true
 --returns true if the possess bar, false otherwise
 function ActionBar:IsPossessBar()
 	return self == Dominos:GetPossessBar()
@@ -546,6 +601,7 @@ end
 do
 	local L
 
+	-- 条件滑块模板：把某个分页条件绑定到 -1..N-1 的滑块（-1 表示禁用该页）
 	--state slider template
 	local function ConditionSlider_OnShow(self)
 		self:SetMinMaxValues(-1, Dominos:NumBars() - 1)
@@ -565,6 +621,7 @@ do
 		end
 	end
 
+	-- 新建一个“条件→页码”滑块：标题显示条件或给定文本，右侧显示当前页码（禁用时显示 DISABLE）
 	local function ConditionSlider_New(panel, condition, text)
 		local s = panel:NewSlider(condition, 0, 1, 1)
 		s.OnShow = ConditionSlider_OnShow
@@ -587,6 +644,7 @@ do
 		return s
 	end
 
+	-- 布局面板：按钮数量滑块（改变本条显示的按钮数）
 	local function AddLayout(self)
 		local p = self:AddLayoutPanel()
 
@@ -602,10 +660,13 @@ do
 		end
 	end
 
+	-- 高级面板：由 core 提供的通用高级选项
 	local function AddAdvancedLayout(self)
 		self:AddAdvancedPanel()
 	end
 
+	-- 职业/形态分页面板：仅对拥有相应形态页的职业（战士/德鲁伊/牧师/盗贼/术士）显示滑块
+	-- 注：用 GetSpellInfo(spellID) 取技能名做标题，便于本地化
 	--GetSpellInfo(spellID) is awesome for localization
 	local function AddClass(self)
 		local lClass, class = UnitClass("player")
@@ -632,6 +693,7 @@ do
 		end
 	end
 
+	-- 快捷翻页面板：[bar:2]..[bar:6] 页码滑块（对应暴雪动作条翻页快捷键）
 	local function AddPaging(self)
 		local p = self:NewPanel(L.QuickPaging)
 		for i = 6, 2, -1 do
@@ -639,6 +701,7 @@ do
 		end
 	end
 
+	-- 修饰键面板：按住修饰键（Shift/Ctrl/Alt 及其组合）时切换到对应页
 	local function AddModifier(self)
 		local p = self:NewPanel(L.Modifiers)
 		ConditionSlider_New(p, "[mod:SELFCAST]", AUTO_SELF_CAST_KEY_TEXT)
@@ -651,6 +714,7 @@ do
 		ConditionSlider_New(p, "[mod:ctrl]", CTRL_KEY)
 	end
 
+	-- 目标状态面板：根据当前目标是否存在/敌对/友方进行切页
 	local function AddTargeting(self)
 		local p = self:NewPanel(L.Targeting)
 		ConditionSlider_New(p, "[noexists]", NONE)
@@ -658,6 +722,7 @@ do
 		ConditionSlider_New(p, "[help]", L.Help)
 	end
 
+	-- 显示状态面板：编辑本条的自定义显隐宏条件（对应 GetShowStates/SetShowStates）
 	local function AddShowState(self)
 		local p = self:NewPanel(L.ShowStates)
 		p.height = 56
@@ -691,6 +756,7 @@ do
 		return p
 	end
 
+	-- 构建动作条右键菜单：按顺序加入 布局 / 职业 / 快捷翻页 / 修饰键 / 目标状态 / 显示状态 / 高级 面板
 	function ActionBar:CreateMenu()
 		local menu = self.menu or Dominos:NewMenu(self.id)
 

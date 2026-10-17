@@ -30,6 +30,16 @@ A dominos based casting bar
 	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 	POSSIBILITY OF SUCH DAMAGE.
 --]]
+--[[
+	中文说明：本文件为施法条模块 castBar.lua
+	职责：基于 Dominos 框架体系实现玩家施法/引导进度条，取代暴雪默认施法条 CastingBarFrame；
+	     模块内部注册名为 "CastingBar"（局部变量 DCB），由 Dominos:UseCastbar() 决定启用或禁用。
+	关键依赖：Dominos（Frame/StatusBar 框架类、菜单与布局、Delay 等）、AceLocale-3.0（语言键 "Dominos" 与 "Dominos-Config"）、
+	     暴雪原生 API（CastingBarFrame_OnLoad/OnEvent/OnUpdate、IsHelpfulSpell、IsHarmfulSpell 等，客户端 Interface 30300 旧 API）。
+	被谁使用：由 modules/castBar/castBar.xml → modules/_load.xml 挂载加载。
+	注意：插件对外名已改为 MyDominos335，但内部标识仍为 Dominos——全局表仍叫 Dominos、
+	     动态框架全局名仍为 DominosCastingBar、语言键仍为 "Dominos"/"Dominos-Config"，代码中出现的 Dominos 均为内部标识。
+--]]
 local Dominos = Dominos
 local L = LibStub("AceLocale-3.0"):GetLocale("Dominos")
 local DCB = Dominos:NewModule("CastingBar")
@@ -58,8 +68,10 @@ function DCB:Unload()
 end
 
 --[[ Dominos Frame Object ]]--
+-- 外层施法条框架 CastBar：继承 Dominos.Frame，负责定位/缩放/标题与右键菜单
 CastBar = Dominos:CreateClass("Frame", Dominos.Frame)
 
+-- 创建施法条框架：叠加层设为 HIGH；内部再创建 CastingBar 本体，并隐藏外层标题
 function CastBar:New()
 	local f = self.super.New(self, "cast")
 	f:SetFrameStrata("HIGH")
@@ -117,18 +129,21 @@ function CastBar:CreateMenu()
 	self.menu = menu
 end
 
+-- 布局：依据内部施法条宽度与内边距调整外层框架尺寸（最小 8）
 function CastBar:Layout()
 	self:SetWidth(max(self.cast:GetWidth() + 4 + self:GetPadding() * 2, 8))
 	self:SetHeight(max(24 + self:GetPadding() * 2, 8))
 end
 
 --[[ CastingBar Object ]]--
+-- 内层施法条本体 CastingBar：继承 StatusBar，直接复用暴雪原生施法条的绘制/事件逻辑
 CastingBar = Dominos:CreateClass("StatusBar")
 
 --omg speed
 local BORDER_SCALE = 197 / 150 --its magic!
 local TEXT_PADDING = 18
 
+-- 创建施法条对象：以动态全局名 DominosCastingBar 实例化模板，并缓存时间/文本/边框/闪光子部件
 function CastingBar:New(parent)
 	local f = self:Bind(CreateFrame("StatusBar", "DominosCastingBar", parent, "DominosCastingBarTemplate"))
 	f:SetPoint("CENTER")
@@ -147,6 +162,7 @@ function CastingBar:New(parent)
 	return f
 end
 
+-- 施法事件：先交给原生处理，再按事件类型标记施法失败/中断，并刷新颜色
 function CastingBar:OnEvent(event, ...)
 	CastingBarFrame_OnEvent(self, event, ...)
 
@@ -161,6 +177,7 @@ function CastingBar:OnEvent(event, ...)
 	end
 end
 
+-- 每帧更新：调用原生刷新进度，并更新剩余/已用时间文本，随后触发宽度自适应
 function CastingBar:OnUpdate(elapsed)
 	CastingBarFrame_OnUpdate(self, elapsed)
 
@@ -173,6 +190,7 @@ function CastingBar:OnUpdate(elapsed)
 	end
 end
 
+-- 宽度自适应：按“技能名 + 时间”文本宽度调整自身及边框/闪光贴图宽度，使长技能名不被截断
 function CastingBar:AdjustWidth()
 	local textWidth = self.text:GetStringWidth() + TEXT_PADDING
 	local timeWidth = (self.time:IsShown() and (self.time:GetStringWidth() + 4) * 2) or 0
@@ -195,6 +213,7 @@ function CastingBar:AdjustWidth()
 	end
 end
 
+-- 颜色区分：失败/中断=红，增益法术=绿，减益法术=紫，其它=橙
 function CastingBar:UpdateColor(spell)
 	if self.failed then
 		self:SetStatusBarColor(0.86, 0.08, 0.24)

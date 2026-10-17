@@ -30,6 +30,24 @@ A Dominos frame component that controls frame movement
 	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 	POSSIBILITY OF SUCH DAMAGE.
 --]]
+--[[
+	文件用途 / 架构角色：
+		定义一个覆盖在 Dominos 框架之上的可拖动按钮（DragFrame），
+		负责框架的移动、缩放提示与解锁后的交互（拖动、滚轮改透明度、
+		右键菜单、隐藏/显示切换）。仅在框架解锁时显示。
+
+	内部标识说明：
+		对外改名为 MyDominos335，但本文件仍向全局表 Dominos 挂载
+		Dominos.DragFrame，内部标识仍为 Dominos。
+
+	关键依赖：
+		- core：Dominos.lua（CreateClass、Locked、Frame 交互）。
+		- 库：AceLocale-3.0（语言键 "Dominos"）。
+
+	被使用：
+		core/frame.lua 的 Frame:Create 中通过 Dominos.DragFrame:New(f) 为每个框架
+		创建拖动手柄，并调用其 Hide/Show/SetScale/UpdateColor 等。
+]]
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -38,6 +56,7 @@ Dominos.DragFrame = Drag
 
 local L = LibStub("AceLocale-3.0"):GetLocale("Dominos")
 
+--constructor（为 owner 框架创建一个覆盖其上的拖动手柄，层级略高于框架本身）
 function Drag:New(owner)
 	local f = self:Bind(CreateFrame("Button", nil, UIParent))
 	f.owner = owner
@@ -101,6 +120,8 @@ function Drag:OnLeave()
 	GameTooltip:Hide()
 end
 
+-- 左键按下开始拖动所属框架（移动期间隐藏提示框）。
+-- 松开时停止移动并调用 owner:Stick() 触发贴靠吸附，随后刷新提示框。
 function Drag:StartMoving(button)
 	if button == "LeftButton" then
 		self.isMoving = true
@@ -121,6 +142,7 @@ function Drag:StopMoving()
 	end
 end
 
+-- 滚轮调整所属框架透明度，每次 ±0.1 并钳制在 [0,1]，变化后刷新提示框文本。
 function Drag:OnMouseWheel(arg1)
 	local newAlpha = min(max(self.owner:GetAlpha() + (arg1 * 0.1), 0), 1)
 	if newAlpha ~= self.owner:GetAlpha() then
@@ -129,6 +151,8 @@ function Drag:OnMouseWheel(arg1)
 	end
 end
 
+-- 点击行为（解锁时）：右键=打开分栏菜单（Shift 时切换显隐），
+-- 中键=切换显隐；处理完刷新提示框。
 function Drag:OnClick(button)
 	if button == "RightButton" then
 		if IsShiftKeyDown() then
@@ -142,6 +166,9 @@ function Drag:OnClick(button)
 	self:OnEnter()
 end
 
+-- 根据框架的显示状态与是否已贴靠其他框架，刷新拖动手柄的底色：
+-- 显示中→青色系（贴靠后偏暗青），隐藏中→灰色系（贴靠后偏黑），
+-- 便于在解锁界面中一眼区分各条的状态。
 --updates the drag button color of a given bar if its attached to another bar
 function Drag:UpdateColor()
 	if self.owner:IsShown() then

@@ -1,3 +1,21 @@
+--[[
+	MyDominos335（内部标识仍为 Dominos）—— 职业/形态条模块 classBar.lua
+
+	负责“职业条”：显示德鲁伊/战士/牧师/盗贼/术士等职业的形态或变身按钮。暴雪没有可
+	直接复用的独立形态按钮，故本模块自行创建 DominosClassButton1..N，并借助
+	GetNumShapeshiftForms / GetShapeshiftFormInfo / GetShapeshiftFormCooldown 驱动。
+	条继承 core 的 Dominos.Frame，按钮继承 Dominos.BindableButton。
+
+	关键依赖：
+		- Dominos:Masque("Class Bar", ...)：皮肤；不可用时回退 Dominos 自带外观（ClassButton:Skin）
+		- LibKeyBound-1.0：悬停高亮并显示按键绑定
+
+	注意事项：
+		- 内部标识仍为 Dominos。
+		- 面向 3.3.5a（Interface 30300）旧 API（UPDATE_SHAPESHIFT_FORMS 等），
+		  无现代 C_ 系列接口。
+--]]
+
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -10,6 +28,7 @@ local NT_SIZE = (66 / 36) * BUTTON_SIZE
 local KeyBound = LibStub("LibKeyBound-1.0")
 
 --[[ Class Button ]]
+-- 职业/形态按钮类：继承 Dominos.BindableButton；因无暴雪按钮可复用，故完全自建。
 local ClassButton = Dominos:CreateClass("CheckButton", Dominos.BindableButton)
 
 --[[ Constructor ]]
@@ -17,6 +36,8 @@ function ClassButton:New(id)
 	return self:Restore(id) or self:Create(id)
 end
 
+-- 自建形态按钮：装配图标/普通/按下/高亮/选中贴图、热键字串与冷却框，
+-- 设为 "spell" 安全属性按钮（点击即施放对应形态法术），并绑定各回调。
 function ClassButton:Create(id)
 	local name = format("DominosClassButton%d", id)
 
@@ -96,6 +117,7 @@ function ClassButton:Free()
 end
 
 --[[ Frame Events ]]
+-- 仅当按钮可见时注册相关事件，隐藏时全部注销，避免无谓刷新。
 function ClassButton:UpdateEvents()
 	if self:IsShown() then
 		self:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
@@ -109,6 +131,7 @@ function ClassButton:UpdateEvents()
 	end
 end
 
+-- 事件分发：按键绑定变化→刷新热键；形态数量变化且本钮超出→隐藏；自身光环变化→刷新；其余→刷新
 function ClassButton:OnEvent(event, arg1)
 	if event == "UPDATE_BINDINGS" then
 		self:UpdateHotkey()
@@ -144,6 +167,7 @@ function ClassButton:PostClick()
 end
 
 --[[ Update Functions ]]
+-- 刷新按钮：读取形态信息设置选中态、图标与可用颜色，并刷新形态冷却转圈。
 function ClassButton:Update()
 	local texture, name, isActive, isCastable = GetShapeshiftFormInfo(self:GetID())
 	self:SetChecked(isActive)
@@ -166,12 +190,14 @@ function ClassButton:Update()
 	end
 end
 
+-- 将本槽形态对应的法术名写入安全属性 "spell"，供安全模板按钮点击时施放；随后刷新显示。
 function ClassButton:UpdateSpell()
 	self:SetAttribute("spell", select(2, GetShapeshiftFormInfo(self:GetID())))
 	self:Update()
 end
 
 --[[ Class Bar ]]
+-- 职业条类：继承 core 的 Dominos.Frame，并监听 UPDATE_SHAPESHIFT_FORMS 以在形态变化时重建。
 local ClassBar = Dominos:CreateClass("Frame", Dominos.Frame)
 Dominos.ClassBar = ClassBar
 
@@ -212,6 +238,7 @@ function ClassBar:RemoveButton(i)
 	b:Free()
 end
 
+-- 按当前可用形态数量增补/刷新按钮并显示，最后同步本条的按钮数
 function ClassBar:UpdateForms()
 	for i = 1, GetNumShapeshiftForms() do
 		local b = self.buttons[i] or self:AddButton(i)

@@ -31,6 +31,24 @@ Necessary since using the blizzard fading functions can cause issues in combat
 	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 	POSSIBILITY OF SUCH DAMAGE.
 --]]
+--[[
+	文件用途 / 架构角色：
+		淡出管理器：当鼠标不悬停在框架上时，把框架透明度平滑过渡到其
+		期望值（GetExpectedAlpha）。因暴雪自带的淡出函数在战斗中可能出问题，
+		故自行实现基于 OnUpdate 的定时轮询与线性插值淡出。
+
+	内部标识说明：
+		对外改名为 MyDominos335，但本文件仍向全局表 Dominos 挂载
+		Dominos.FadeManager，内部标识仍为 Dominos。
+
+	关键依赖：
+		- core：Dominos.lua（全局表）。被管理的框架需实现 GetExpectedAlpha/GetAlpha。
+		- 使用全局 API：CreateFrame / SetScript / SetAlpha（3.3.5 旧 API）。
+
+	被使用：
+		core/frame.lua 的 Frame:UpdateFader / Frame:Free 通过
+		FadeManager:Add / FadeManager:Remove 注册或注销需要淡出的框架。
+]]
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -41,6 +59,8 @@ local FadeWatcher = CreateFrame("Frame")
 local Fader = CreateFrame("Frame")
 
 --[[ Registers Frames for Fading ]]--
+-- 注册/注销需要自动淡出的框架：Add 加入监视集合（并唤醒监视器），
+-- Remove 移除。对应的实际逻辑在下方 watcher 的 Add/Remove 中实现。
 function FadeManager:Add(f)
 	FadeWatcher:Add(f)
 end
@@ -50,6 +70,9 @@ function FadeManager:Remove(f)
 end
 
 --[[ Watch Frames For Fade Changing ]]--
+-- 监视器：以固定间隔（DELAY=0.12 秒）轮询被登记的框架，
+-- 若其期望透明度（GetExpectedAlpha）与当前透明度（GetAlpha）差异大于 0.01，
+-- 就交给 Fader 做 0.1 秒的线性淡入/淡出。watchedFrames 为空时自动隐藏该帧。
 do
 	local watchedFrames = {}
 
@@ -87,6 +110,8 @@ do
 end
 
 --[[ Handle Fading ]]--
+-- 淡出执行器：对 fadingFrames 中每个框架，按经过时间在起始与结束透明度间
+-- 做线性插值；到达时间上限后落到 endAlpha 并移出列表。列表为空时隐藏本帧。
 do
 	local fadingFrames = {}
 
@@ -112,6 +137,8 @@ do
 		end
 	end)
 
+	-- 启动一段淡入/淡出：立即设为起始透明度，并把淡出信息挂到 frame.fadeInfo，
+	-- 加入 fadingFrames 由 OnUpdate 逐帧插值；若该帧已在淡出列表中则不重复添加。
 	function Fader:Fade(frame, timeToFade, startAlpha, endAlpha)
 		frame:SetAlpha(startAlpha)
 

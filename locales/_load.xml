@@ -1,5 +1,7 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
 ..\FrameXML\UI.xsd">
+<!-- 语言包加载清单：必须最先加载 enUS.lua——它是 AceLocale 的默认语言（只有 enUS 在 NewLocale 时传入 true，
+     用作缺失翻译的回退），其余语言在其之后加载，顺序不可调整。 -->
 <Script file="enUS.lua" />
 <Script file="deDE.lua" />
 <Script file="esES.lua" />

@@ -1,3 +1,20 @@
+--[[
+	MyDominos335（内部标识仍为 Dominos）—— 载具条模块 vehicleBar.lua
+
+	负责载具条：复用暴雪载具菜单栏的 VehicleMenuBarLeaveButton（离开载具）与
+	VehicleMenuBarPitchUpButton / VehicleMenuBarPitchDownButton（俯仰按钮）。条继承 core 的
+	Dominos.Frame。
+
+	关键依赖：
+		- 通过 Dominos 皮肤数据（GetSkinData）给三个按钮套皮（见 ApplySkin）
+		- 监听 UNIT_ENTERED_VEHICLE / UNIT_ENTERING_VEHICLE 事件以更新按钮显隐
+		- 语言键取自 "Dominos"
+
+	注意事项：
+		- 内部标识仍为 Dominos。
+		- 面向 3.3.5a（Interface 30300）旧 API（IsVehicleAimAngleAdjustable / CanExitVehicle 等）。
+--]]
+
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -5,6 +22,7 @@ local VehicleBar = Dominos:CreateClass("Frame", Dominos.Frame)
 Dominos.VehicleBar = VehicleBar
 
 local L = LibStub("AceLocale-3.0"):GetLocale("Dominos")
+-- 复用暴雪载具菜单栏的三个按钮：离开、俯仰向上、俯仰向下
 local buttons = {VehicleMenuBarLeaveButton, VehicleMenuBarPitchUpButton, VehicleMenuBarPitchDownButton}
 
 function VehicleBar:New()
@@ -27,6 +45,7 @@ function VehicleBar:OnEvent(event, arg1)
 	end
 end
 
+-- 按载具能力更新显隐：可调俯仰角才显示俯仰按钮；可离开载具才显示离开按钮
 function VehicleBar:UpdateButtonVisibility()
 	if IsVehicleAimAngleAdjustable() then
 		_G["VehicleMenuBarPitchUpButton"]:Show()
@@ -43,12 +62,14 @@ function VehicleBar:UpdateButtonVisibility()
 	end
 end
 
+-- 依次给三个载具按钮套用皮肤
 function VehicleBar:SkinButtons()
 	self:ApplySkin("PitchUpButton")
 	self:ApplySkin("PitchDownButton")
 	self:ApplySkin("LeaveButton")
 end
 
+-- 取该按钮的皮肤数据并套用：统一尺寸为 30x30，按数据替换普通/按下贴图及纹理坐标
 function VehicleBar:ApplySkin(frameName)
 	local skin = self:GetSkinData(frameName)
 	local frame = _G["VehicleMenuBar" .. frameName]
@@ -71,6 +92,7 @@ function VehicleBar:ApplySkin(frameName)
 	end
 end
 
+-- 返回三个载具按钮各自的皮肤数据（尺寸、锚点、贴图路径与纹理坐标）
 function VehicleBar:GetSkinData(frameName)
 	if frameName == "PitchUpButton" then
 		return {
@@ -136,6 +158,7 @@ function VehicleBar:RemoveButton(i)
 	self.buttons[i] = nil
 end
 
+-- 载具条显隐条件：存在载具目标时显示，否则隐藏
 function VehicleBar:GetShowStates()
 	return "[target=vehicle,exists]show;hide"
 end

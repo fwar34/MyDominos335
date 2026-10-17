@@ -1,5 +1,7 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
 ..\FrameXML\UI.xsd">
+<!-- 模块加载清单：按顺序加载各功能模块脚本；castBar 与 totemBar 通过 Include 引入各自 xml，
+     xml 内再规定脚本加载顺序。 -->
 <!-- Default modules -->
 <Script file="actionBar.lua" />
 <Script file="petBar.lua" />

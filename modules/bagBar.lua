@@ -1,3 +1,19 @@
+--[[
+	MyDominos335（内部标识仍为 Dominos）—— 背包条模块 bagBar.lua
+
+	负责背包条：复用暴雪原生背包按钮 MainMenuBarBackpackButton 与 CharacterBag0..3Slot，
+	并自建钥匙链按钮 DominosKeyringButton（暴雪未提供可复用的钥匙链按钮）。支持两种选项：
+	“单背包模式”（oneBag，只显示主背包按钮）与显示/隐藏钥匙链。
+
+	关键依赖：
+		- Dominos:Masque("Bag Bar", ...)：皮肤（见 SkinButton）
+		- 使用暴雪 ItemButtonTemplate 创建钥匙链按钮
+
+	注意事项：
+		- 内部标识仍为 Dominos：右键菜单文本取自语言键 "Dominos-Config"。
+		- 面向 3.3.5a（Interface 30300）旧 API（PutKeyInKeyRing / ToggleKeyRing / KEYRING 等全局函数）。
+--]]
+
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -7,6 +23,7 @@ local _G = _G
 --load up the bag set...
 local bags = {}
 do
+	-- 统一调整物品按钮尺寸，并同步“数量/存量”字串的字体与位置
 	local function ResizeItemButton(b, size)
 		b:SetWidth(size)
 		b:SetHeight(size)
@@ -21,6 +38,7 @@ do
 		_G[b:GetName() .. "Stock"]:SetVertexColor(1, 1, 0)
 	end
 
+	-- 自建钥匙链按钮：点击/拖入时把光标物品放入钥匙链，否则开关钥匙链界面，并带 KEYRING 提示
 	local function CreateKeyRing(name)
 		local b = CreateFrame("CheckButton", name, UIParent, "ItemButtonTemplate")
 		b:RegisterForClicks("anyUp")
@@ -61,6 +79,7 @@ do
 end
 
 --[[ Bag Bar ]]--
+-- 背包条类：继承 core 的 Dominos.Frame；按钮集合在 Reload 时构建于 self.bags 表中。
 local BagBar = Dominos:CreateClass("Frame", Dominos.Frame)
 Dominos.BagBar = BagBar
 
@@ -79,11 +98,13 @@ function BagBar:GetDefaults()
 	return {point = "BOTTOMRIGHT", spacing = 2}
 end
 
+-- 设置“单背包模式”：仅保留主背包按钮，随后重载按钮集合
 function BagBar:SetSetOneBag(enable)
 	self.sets.oneBag = enable or nil
 	self:Reload()
 end
 
+-- 设置是否显示钥匙链按钮（写入 hideKeyring 标志后重载）
 function BagBar:SetShowKeyring(enable)
 	if enable then
 		self.sets.hideKeyring = nil
@@ -93,6 +114,7 @@ function BagBar:SetShowKeyring(enable)
 	self:Reload()
 end
 
+-- 依据当前选项重建按钮集合顺序：钥匙链（未隐藏）→ 四个背包槽（非单背包模式）→ 主背包，最后同步按钮数
 function BagBar:Reload()
 	if not self.bags then
 		self.bags = {}
@@ -119,6 +141,7 @@ function BagBar:Reload()
 end
 
 --[[ Frame Overrides ]]--
+-- 复用 bags 表中的暴雪按钮：挂到 header、显示、套用皮肤，并记入 buttons
 function BagBar:AddButton(i)
 	local b = self.bags[i]
 	b:SetParent(self.header)
@@ -137,6 +160,7 @@ function BagBar:RemoveButton(i)
 	end
 end
 
+-- 按新数量先移除全部旧按钮，再按顺序重新添加
 function BagBar:UpdateButtonCount(numButtons)
 	for i = 1, #self.buttons do
 		self:RemoveButton(i)
@@ -151,6 +175,7 @@ function BagBar:NumButtons()
 	return #self.bags
 end
 
+-- 构建右键菜单：布局面板 + “单背包”“显示钥匙链”两个复选框 + 高级面板
 function BagBar:CreateMenu()
 	local menu = self.menu or Dominos:NewMenu(self.id)
 	local panel = menu:AddLayoutPanel()

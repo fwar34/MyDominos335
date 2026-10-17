@@ -2,8 +2,22 @@
 totemBar
 A dominos totem bar
 --]]
+--[[
+	中文说明：本文件为图腾条模块 totemBar.lua
+	职责：为萨满提供图腾动作条。包含两套实现：
+	       1) 原生图腾条 LoadTotemBars：为每系图腾建立 Dominos Frame("totem1".."totem4")，
+	          按钮取自图腾动作槽（起始动作 ID = 132），并监听 UPDATE_MULTI_CAST_ACTIONBAR 刷新。
+	       2) 备用图腾条 LoadAltTotemBars：当 Dominos:ATotemBar() 开启时启用，接管暴雪原生
+	          MultiCastActionBarFrame 及各 MultiCastSlot/Summon/Recall 控件的位置与显示（思路复制自 aTotemBar）。
+	     按钮：CALL 为“召唤 X 图腾”法术按钮，RECALL 为“图腾召回”法术按钮，均来自 Dominos.SpellButton。
+	关键依赖：Dominos（Frame/ActionButton/SpellButton、Delay、db.profile.totemBar）、AceEvent-3.0、
+	     暴雪原生图腾 API（TOTEM_MULTI_CAST_*、GetTotemInfo、DestroyTotem、MultiCastActionBarFrame 等旧 API）。
+	被谁使用：由 modules/totemBar/totemBar.xml → modules/_load.xml 加载。
+	注意：插件对外名已改为 MyDominos335，但内部标识仍为 Dominos——模块名、类名与全局表仍为 Dominos，均属内部标识。
+--]]
 --no reason to load if we're not playing a shaman...
 assert(Dominos, "Dominos not found!")
+-- 仅萨满加载：非萨满职业则直接退出本模块
 if Dominos.MyClass ~= "SHAMAN" then return end
 
 local Dominos = Dominos
@@ -17,6 +31,7 @@ local START_ACTION_ID = 132 --actionID start of the totembar
 local SUMMON_SPELLS = TOTEM_MULTI_CAST_SUMMON_SPELLS
 
 --[[ Module ]]
+-- 模块入口：由 Dominos:ATotemBar() 决定走原生图腾条（LoadTotemBars）还是备用 aTotemBar（LoadAltTotemBars）
 function DTB:Load()
 	if Dominos:ATotemBar() then
 		self:Unload()
@@ -68,6 +83,7 @@ do
 		end
 	end
 
+	-- 原生图腾条实现：为四系图腾建立/复用 Dominos Frame，并挂钩暴雪 TotemButton_Update 以驱动图腾计时置灰
 	function DTB:LoadTotemBars()
 		for i, spell in pairs(SUMMON_SPELLS) do
 			local f = Dominos.Frame:Get("totem" .. i)
@@ -201,6 +217,7 @@ function TotemBar:IsCallKnown()
 	return IsSpellKnown(self.callSpell, false)
 end
 
+-- CALL 按钮：“召唤 X 图腾”法术按钮
 function TotemBar:GetCallButton()
 	return self:CreateSpellButton(self.callSpell)
 end
@@ -209,6 +226,7 @@ function TotemBar:IsRecallKnown()
 	return IsSpellKnown(RECALL_SPELL, false)
 end
 
+-- RECALL 按钮：“图腾召回”法术按钮
 function TotemBar:GetRecallButton()
 	return self:CreateSpellButton(RECALL_SPELL)
 end
@@ -320,6 +338,7 @@ do
 		end
 	end
 
+	-- 备用图腾条初始化：接管并重定位暴雪原生 MultiCastActionBarFrame 等控件，为四系图腾创建计时 Cooldown
 	local function SetupTotemBar()
 		if aTotemBar then return end
 
@@ -469,6 +488,7 @@ do
 		end
 	end
 
+	-- 备用实现：启用 aTotemBar（接管暴雪原生 MultiCast 图腾条）
 	function DTB:LoadAltTotemBars()
 		SetupTotemBar()
 		Dominos:Delay(0.25, aTotemBar_PLAYER_ENTERING_WORLD, aTotemBar)

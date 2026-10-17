@@ -1,18 +1,23 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
 ..\FrameXML\UI.xsd">
 <Script file="castBar.lua" />
+<!-- 施法条 XML：先加载 castBar.lua 脚本，随后定义 "DominosCastingBarTemplate" 状态条模板；
+     castBar.lua 再以动态全局名 DominosCastingBar 实例化该模板。 -->
 
 <StatusBar name="DominosCastingBarTemplate" drawLayer="BORDER" hidden="true" virtual="true">
+	<!-- 施法条模板（virtual 虚拟模板、默认隐藏），尺寸 210x14，供 CastingBar:New 实例化 -->
 	<Size x="210" y="14" />
 
 	<Layers>
 		<Layer level="BACKGROUND">
+			<!-- 背景底色：黑色半透明 -->
 			<Texture setAllPoints="true">
 				<Color r="0" g="0" b="0" a="0.5" />
 			</Texture>
 		</Layer>
 
 		<Layer level="ARTWORK">
+			<!-- Text：技能/法术名称文本（居中） -->
 			<FontString name="$parentText" font="GameFontHighlight">
 				<Anchors>
 					<Anchor point="CENTER">
@@ -20,6 +25,7 @@
 					</Anchor>
 				</Anchors>
 			</FontString>
+			<!-- Time：施法剩余/已用时间文本（右对齐，默认隐藏，由“显示时间”选项控制） -->
 			<FontString name="$parentTime" font="GameFontHighlight" hidden="true">
 				<Anchors>
 					<Anchor point="RIGHT">
@@ -28,6 +34,7 @@
 				</Anchors>
 			</FontString>
 
+			<!-- Border：施法条边框贴图 -->
 			<Texture name="$parentBorder" file="Interface\CastingBar\UI-CastingBar-Border-Small">
 				<Size x="275" y="68" />
 				<Anchors>
@@ -35,6 +42,7 @@
 				</Anchors>
 			</Texture>
 
+			<!-- BorderShield：护盾边框贴图（默认隐藏） -->
 			<Texture name="$parentBorderShield" file="Interface\CastingBar\UI-CastingBar-Small-Shield" hidden="true">
 				<Size>
 					<AbsDimension x="275" y="68" />
@@ -46,6 +54,7 @@
 		</Layer>
 
 		<Layer level="OVERLAY">
+			<!-- Spark：进度位置闪光点（ADD 叠加混合） -->
 			<Texture name="$parentSpark" file="Interface\CastingBar\UI-CastingBar-Spark" alphaMode="ADD">
 				<Size x="32" y="32" />
 				<Anchors>
@@ -54,6 +63,7 @@
 					</Anchor>
 				</Anchors>
 			</Texture>
+			<!-- Flash：满条闪光贴图（ADD 叠加混合） -->
 			<Texture name="$parentFlash" file="Interface\CastingBar\UI-CastingBar-Flash-Small" alphaMode="ADD">
 				<Size x="275" y="78" />
 				<Anchors>
@@ -64,11 +74,13 @@
 	</Layers>
 
 	<Scripts>
+		<!-- OnLoad：调用暴雪原生 CastingBarFrame_OnLoad，将本框注册为玩家 ('player') 施法条 -->
 		<OnLoad>
 			CastingBarFrame_OnLoad(self, 'player', true)
 		</OnLoad>
 	</Scripts>
 
+	<!-- 状态条填充材质；默认颜色为橙黄，运行时由 UpdateColor 动态改变 -->
 	<BarTexture file="Interface\TargetingFrame\UI-StatusBar" />
 	<BarColor r="1.0" g="0.7" b="0.0" />
 </StatusBar>

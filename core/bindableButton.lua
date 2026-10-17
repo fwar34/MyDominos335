@@ -31,6 +31,26 @@
 	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 	POSSIBILITY OF SUCH DAMAGE.
 --]]
+--[[
+	文件用途 / 架构角色：
+		抽象的按钮类 BindableButton（继承 CheckButton），用于让 LibKeyBound
+		能透明地同时处理暴雪原生按键绑定与点击绑定（CLICK 绑定），
+		并向按钮显示快捷键文本（HotKey 字体串）。
+
+	内部标识说明：
+		对外改名为 MyDominos335，但本文件仍向全局表 Dominos 挂载
+		Dominos.BindableButton，内部标识仍为 Dominos。
+
+	关键依赖：
+		- core：Dominos.lua（CreateClass）。
+		- 库：LibKeyBound-1.0（将按键映射转成短标题 ToShortKey）。
+		- 使用全局 API：GetBindingKey / GetBindingText / SetBinding /
+		  SetBindingClick（3.3.5 旧 API）。
+
+	被使用：
+		modules 中的动作按钮实例作为其绑定对象，调用 UpdateHotkey / GetBindings /
+		SetKey / ClearBindings 等。
+]]
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -40,6 +60,9 @@ Dominos.BindableButton = BindableButton
 local KeyBound = LibStub('LibKeyBound-1.0')
 local _G = _G
 
+-- 更新按钮的快捷键文字：约定所有快捷键字体串命名都遵循 <按钮名>HotKey 规则。
+-- 当显示绑定文字开关打开且存在绑定时显示按键，否则清空字体串并隐藏
+-- （清空是为了覆盖 RANGE_INDICATOR 等非空内容）。
 --there's a nice assumption here: all hotkey text will use the same naming convention
 --the call here is wacky because this functionality is actually called for the blizzard buttons _before_ I'm able to bind the action button methods to them
 function BindableButton:UpdateHotkey(buttonType)
@@ -53,6 +76,8 @@ function BindableButton:UpdateHotkey(buttonType)
 	end
 end
 
+-- 返回按钮应显示的快捷键：优先取暴雪按键绑定，其次取点击（CLICK）绑定，
+-- 再经 LibKeyBound 的 ToShortKey 转成简短标题；无绑定时返回空串。
 --returns what hotkey to display for the button
 function BindableButton:GetHotkey(buttonType)
 	local key = BindableButton.GetBlizzBindings(self, buttonType) or BindableButton.GetClickBindings(self)
@@ -88,6 +113,8 @@ local function getKeyStrings(...)
 	return keys
 end
 
+-- 汇总该按钮的全部绑定为逗号分隔的可读文本（暴雪绑定在前、点击绑定在后），
+-- 供 LibKeyBound 提示或调试展示使用。
 function BindableButton:GetBindings()
 	local blizzKeys = getKeyStrings(self:GetBlizzBindings())
 	local clickKeys = getKeyStrings(self:GetClickBindings())
@@ -102,6 +129,8 @@ function BindableButton:GetBindings()
 	end
 end
 
+-- 为按钮设置按键绑定：有 buttonType（暴雪动作按钮）时绑到 类型+id，
+-- 否则绑成对该按钮本体的点击（CLICK）绑定。
 --set bindings (more keybound support)
 function BindableButton:SetKey(key)
 	if self.buttonType then

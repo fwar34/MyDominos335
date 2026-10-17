@@ -30,6 +30,26 @@ Based on the fubar and item rack minimap buttons
 	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 	POSSIBILITY OF SUCH DAMAGE.
 --]]
+--[[
+	文件用途 / 架构角色：
+		创建环绕小地图的 MyDominos335 小地图按钮（沿用 fubar / item rack 的
+		小地图按钮实现）。可拖动沿小地图边缘定位，左键锁定/解锁或进入绑定模式，
+		右键打开选项面板。
+
+	内部标识说明：
+		对外改名为 MyDominos335，但本文件仍向全局表 Dominos 挂载
+		Dominos.Minimap，动态框架全局名为 DominosMinimapButton，内部标识仍为 Dominos。
+
+	关键依赖：
+		- core：Dominos.lua（ToggleLockedFrames / ShowOptions / Locked 等）。
+		- 库：AceLocale-3.0（语言键 "Dominos"）。
+		- 使用全局 API：GetCursorPosition / Minimap:GetEffectiveScale /
+		 GetMinimapShape 等（3.3.5 旧 API，无 C_ 版本）。
+
+	被使用：
+		Dominos:UpdateMinimapButton 在 Load 与设置变更时调用其
+		UpdatePosition / Show / Hide。
+]]
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -38,6 +58,8 @@ local L = LibStub("AceLocale-3.0"):GetLocale("Dominos")
 local MinimapButton = CreateFrame("Button", "DominosMinimapButton", Minimap)
 Dominos.Minimap = MinimapButton
 
+-- 初始化小地图按钮：设置尺寸/层级/描边贴图与图标，并挂接交互脚本。
+-- 文件末尾会调用一次 MinimapButton:Load()。
 function MinimapButton:Load()
 	self:SetFrameStrata("MEDIUM")
 	self:SetWidth(31)
@@ -70,6 +92,8 @@ function MinimapButton:Load()
 	self:SetScript("OnMouseUp", self.OnMouseUp)
 end
 
+-- 点击行为：左键=锁定/解锁（Shift 时进入按键绑定模式），右键=打开选项面板；
+-- 处理完后刷新提示框。
 function MinimapButton:OnClick(button)
 	if button == "LeftButton" then
 		if IsShiftKeyDown() then
@@ -138,6 +162,8 @@ function MinimapButton:OnDragStop()
 	self:UnlockHighlight()
 end
 
+-- 拖动期间每帧执行：以光标相对小地图中心的角度（0-360 度）作为按钮方位，
+-- 保存到存档并刷新按钮位置，实现沿小地图边缘绕行拖动。
 function MinimapButton:OnUpdate()
 	local mx, my = Minimap:GetCenter()
 	local px, py = GetCursorPosition()
@@ -149,6 +175,9 @@ function MinimapButton:OnUpdate()
 	self:UpdatePosition()
 end
 
+-- 依据存档中的方位角，把小地图按钮摆到小地图边缘的正确位置。
+-- 其中会根据小地图形状（圆/方/各种切角与半边）判断该角度是否落在“圆弧区”，
+-- 圆弧区按半径 80 取点，非圆弧区则按矩形边界钳制坐标。
 --magic fubar code for updating the minimap button's position
 --I suck at trig, so I'm not going to bother figuring it out
 function MinimapButton:UpdatePosition()

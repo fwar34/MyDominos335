@@ -30,6 +30,34 @@ Driver for Dominos Frames
 	ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 	POSSIBILITY OF SUCH DAMAGE.
 --]]
+--[[
+	文件用途 / 架构角色：
+		MyDominos335 的主驱动（Driver），是 core 层第一个被加载的文件。
+		负责创建 AceAddon 全局表、初始化存档（AceDB）、注册事件与斜杠命令、
+		按当前配置创建/销毁各动作条分栏，并屏蔽暴雪原生动作条。
+
+	内部标识说明：
+		本插件对外改名 MyDominos335，但内部标识仍沿用 Dominos——
+		全局表叫 Dominos、存档变量为 DominosDB / DominosVersion、
+		AceLocale 语言键为 "Dominos" / "Dominos-Config"、
+		部分动态框架全局名为 DominosActionButton / DominosCastingBar 等、
+		斜杠命令仍为 /dominos 与 /dom。请勿误以为插件未改名。
+
+	关键依赖：
+		- 库：AceAddon-3.0 / AceEvent-3.0 / AceConsole-3.0 / AceDB-3.0 /
+		  AceLocale-3.0 / CallbackHandler-1.0；可选 LibDataBroker-1.1、
+		  LibKeyBound-1.0、LibButtonFacade 或 Masque。
+		- core（加载顺序）：fadeManager.lua、drag.lua、frame.lua、
+		  bindableButton.lua、minimap.lua。本文件先加载，仅提供 Dominos 全局表，
+		  其余 core 文件向其挂载 Frame/FadeManager/DragFrame/BindableButton/Minimap。
+		- 被使用：modules/* 通过 self:IterateModules() 加载；core/frame.lua 反向调用
+		  本文件的 GetFrameSets / SetFrameSets / Locked / IsLinkedOpacityEnabled 等。
+
+	注意事项（3.3.5a / Interface 30300，旧 API）：
+		- 使用 GetAddOnMetadata / GetAddOnInfo / LoadAddOn，
+		  没有 C_AddOns / C_Timer / WOW_PROJECT_ID 等现代 API。
+		- 延时统一走自建的 Delay（由 OnUpdate 帧驱动），不使用 C_Timer。
+]]
 Dominos = LibStub("AceAddon-3.0"):NewAddon("MyDominos335", "AceEvent-3.0", "AceConsole-3.0")
 Dominos.callbacks = Dominos.callbacks or LibStub("CallbackHandler-1.0"):New(Dominos)
 Dominos.MyClass = select(2, UnitClass("player"))
@@ -40,6 +68,16 @@ local CURRENT_VERSION = GetAddOnMetadata("MyDominos335", "Version")
 local MSQ, LBF
 
 -- startup
+--（初始化时序，见下）
+--[[
+	OnInitialize：AceAddon 在插件加载后调用，负责一次性初始化。
+	1) 以 "DominosDB" 打开存档，默认档案名取当前玩家职业（UnitClass 第 2 返回值）；
+	   注册新建/切换/复制/重置/删除各档案回调。
+	2) 版本迁移：若存档有 DominosVersion 且与当前版本不同，取出版本号交给
+	   UpdateSettings 做旧配置迁移后写回版本号；若无版本记录（新用户）则直接写入。
+	3) 注册斜杠命令；用 InterfaceOptionsFrame 的 OnShow 懒加载 MyDominos335_Config。
+	4) 注册 LibKeyBound 的启用/禁用回调与按钮外观库（LBF）的换肤回调。
+]]
 function Dominos:OnInitialize()
 	--register database events
 	self.db = LibStub("AceDB-3.0"):New("DominosDB", self:GetDefaults(), UnitClass("player"))
@@ -82,6 +120,8 @@ function Dominos:OnInitialize()
 	end
 end
 
+-- OnEnable：启用时先屏蔽暴雪动作条，再按存档创建全部分栏；
+-- 若装有 LibDataBroker-1.1，则额外注册一个数据源插件（供 Titan/ChocolateBar 等使用）。
 function Dominos:OnEnable()
 	self:HideBlizzard()
 	self:Load()
@@ -204,6 +244,9 @@ local function HasClassBar()
 	return not (class == "HUNTER" or class == "MAGE" or class == "SHAMAN")
 end
 
+-- Load：首次启用时调用，切换档案后也会重新调用。
+-- 按数量创建所有动作条分栏，非猎/法/萨满（有职业专属条的职业才建 ClassBar）；
+-- 应用按钮外观的换肤样式；加载已启用的 modules；重排所有框架；刷新小地图按钮。
 function Dominos:Load()
 	for i = 1, self:NumBars() do
 		self.ActionBar:New(i)
@@ -240,6 +283,8 @@ function Dominos:Load()
 	self:LoadBFa()
 end
 
+-- Unload：切换档案前调用，释放全部分栏框架（动作条整体 Free、
+-- 宠物/职业/菜单/背包/载具条各自 Free），并让所有 modules 执行 Unload 清理。
 -- unload is called when we're switching profiles
 function Dominos:Unload()
 	self.ActionBar:ForAll("Free")
@@ -255,6 +300,9 @@ function Dominos:Unload()
 	end
 end
 
+-- 屏蔽暴雪原生动作条：把 MultiActionBar 相关更新函数替换为空操作，
+-- 解除各原生动作条/经验条/姿态条/额外条/载具占位条的事件注册并隐藏，
+-- 同时清理 UIPARENT 对它们的位置管理，避免与自绘动作条冲突。
 -- Blizzard Stuff Hiding
 function Dominos:HideBlizzard()
 	local noop = Multibar_EmptyFunc
@@ -1068,6 +1116,10 @@ do
 	end
 end
 
+-- 简易类系统：以 CreateFrame(type) 作为类对象，用元表让实例继承类方法；
+-- 传入 parentClass 时再让“类”继承父类（记录 class.super）。
+-- class:Bind(o) 把已有对象 o 的元表指向本类的 mt，从而复用该类方法。
+--（注意：这是插件自建的轻量 OO 方案，真正的框架方法由 modules 在此基础上补充。）
 -- utility function: create a widget class
 function Dominos:CreateClass(type, parentClass)
 	local class = CreateFrame(type)
@@ -1142,6 +1194,10 @@ do
 	local WaitFrame = CreateFrame("Frame", "Dominos_WaitFrame", UIParent)
 	WaitFrame:SetScript("OnUpdate", WaitFrame_OnUpdate)
 
+	-- Delay(delay, func, ...)：延时调度。把任务放入 WaitTable，
+	-- 由 WaitFrame 的 OnUpdate 每帧递减倒计时，到点后带参调用 func。
+	-- timer 对象取自 waitPool 对象池（new/del 复用），避免频繁建表；
+	-- 参数个数存入 timer[3]，0 参不存、1 参直接存、多参存成数组。
 	function Dominos:Delay(delay, func, ...)
 		if type(delay) ~= "number" then
 			error(("Bad argument #1 to 'Delay' (number expected, got %s)"):format(delay ~= nil and type(delay) or "no value"), 2)

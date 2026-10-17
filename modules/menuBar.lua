@@ -1,3 +1,20 @@
+--[[
+	MyDominos335（内部标识仍为 Dominos）—— 微型菜单条模块 menuBar.lua
+
+	负责微型菜单条：复用暴雪主菜单栏 MainMenuBarArtFrame 下所有以 “MicroButton” 结尾的
+	子按钮（角色/法术书/天赋/成就/任务/社交/PVP/寻求组队/主菜单/帮助等）。条继承 core 的
+	Dominos.Frame。
+
+	关键依赖：
+		- 依赖暴雪全局的 *MicroButton 框架与 MicroButtonTooltipText 等
+		- 因微按钮尺寸不规则，重写 Layout（引入 WIDTH_OFFSET / HEIGHT_OFFSET 偏移）
+
+	注意事项：
+		- 内部标识仍为 Dominos。
+		- 面向 3.3.5a（Interface 30300）旧 API（UnitCharacterPoints 等），无现代 C_ 系列接口。
+		- 对天赋按钮做了事件特化，对成就按钮取消了其自动事件。
+--]]
+
 assert(Dominos, "Dominos not found!")
 local Dominos = Dominos
 
@@ -17,6 +34,7 @@ local menuButtons = {
 --]]
 local menuButtons
 do
+	-- 从主菜单栏的子框架中筛选名字形如 “XxxMicroButton” 的按钮，收集为本条按钮集合
 	local loadButtons = function(...)
 		menuButtons = {}
 
@@ -32,6 +50,7 @@ do
 end
 
 do
+	-- 天赋按钮事件特化：升级/登录时，若尚有未分配天赋点且角色面板未开则脉动提示；绑定变化时刷新提示文本
 	TalentMicroButton:SetScript("OnEvent", function(self, event)
 		if (event == "PLAYER_LEVEL_UP" or event == "PLAYER_LOGIN") then
 			if UnitCharacterPoints("player") > 0 and not CharacterFrame:IsShown() then
@@ -46,11 +65,13 @@ do
 	TalentMicroButton:RegisterEvent("PLAYER_LOGIN")
 	TalentMicroButton:RegisterEvent("UPDATE_BINDINGS")
 
+	-- 成就按钮同理：注销其全部事件，避免本条误触发
 	--simialr thing, but the achievement button
 	AchievementMicroButton:UnregisterAllEvents()
 end
 
 --[[ Menu Bar ]]
+-- 微型菜单条类：继承 core 的 Dominos.Frame；按钮集合即上文筛选出的 menuButtons。
 local MenuBar = Dominos:CreateClass("Frame", Dominos.Frame)
 Dominos.MenuBar = MenuBar
 
@@ -90,6 +111,7 @@ function MenuBar:RemoveButton(i)
 	end
 end
 
+-- 重写布局：微按钮尺寸不规则，故引入偏移量修正行列位置与尺寸
 --override, because the menu bar has weird button sizes
 local WIDTH_OFFSET = 2
 local HEIGHT_OFFSET = 20

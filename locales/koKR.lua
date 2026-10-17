@@ -1,3 +1,8 @@
+--[[
+	中文说明：AceLocale 语言包，语言代码为 koKR（韩语）。
+	AceLocale 键为 "Dominos"（内部标识，未随插件对外名 MyDominos335 改名）。
+	仅提供该语言的 L.xxx 翻译文本，不含逻辑；缺失条目回退到默认语言 enUS。
+--]]
 local L = LibStub("AceLocale-3.0"):NewLocale("Dominos", "koKR")
 if not L then return end
 
